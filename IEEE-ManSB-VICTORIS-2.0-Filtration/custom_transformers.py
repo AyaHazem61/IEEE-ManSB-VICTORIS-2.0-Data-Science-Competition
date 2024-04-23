@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.impute import KNNImputer
+
 
 """
 
@@ -80,29 +82,37 @@ class WinsorizationImpute(BaseEstimator, TransformerMixin):
     A new Pandas DataFrame with the specified columns winsorized.
 
 """
+from sklearn.base import BaseEstimator, TransformerMixin
+
 class Target_Encoder(BaseEstimator, TransformerMixin):
-    def __init__(self, col, target = 'Cost', method = 'mean', random_state = 42):
+    def __init__(self, cols, target = 'cost', method = ['mean'], random_state = 42):
         self.random_state = random_state
-        self.col = col
+        self.cols = cols
         self.target = target
         self.method = method
+        self.cats_names = dict()
+        self.cats_encoded = dict()
+        self.encoding = dict()
         
     def fit(self, X, y = None):
         X_temp = X.copy()
         X_temp[self.target] = y
-        if self.method == 'mean':
-            cats_mapped = X_temp.groupby(self.col)[self.target].mean()
-        elif self.method == 'median':
-            cats_mapped = X_temp.groupby(self.col)[self.target].median()
-            
-        self.cats_names = cats_mapped.index
-        self.cats_encoded = cats_mapped.values
-        self.encoding = {self.cats_names[i] : self.cats_encoded[i] for i in range(len(cats_mapped))}
-        
+        for i, col in enumerate(self.cols):
+            cats_mapped = X_temp.groupby(col)[self.target].mean()
+            if self.method[i] == 'mean':
+                cats_mapped = X_temp.groupby(col)[self.target].mean()
+            elif self.method[i] == 'median':
+                cats_mapped = X_temp.groupby(col)[self.target].median()
+            self.cats_names[col] = cats_mapped.index
+            self.cats_encoded[col] = cats_mapped.values
+            self.encoding[col] = {self.cats_names[col][j] : self.cats_encoded[col][j] for j in range(len(cats_mapped))}        
         return self
     
     def transform(self, X):
-        return X[self.col].map(self.encoding).values.reshape(-1, 1)
+        temp = X.copy()
+        for col in self.cols:
+            temp[col] = temp[col].map(self.encoding[col])
+        return temp
     
     def fit_transform(self, X, y=None):
         self.fit(X, y)
@@ -138,3 +148,23 @@ class Multi_Hot_Encoder(BaseEstimator, TransformerMixin):
     def fit_transform(self, X, y=None):
         self.fit(X, y)
         return self.transform(X)
+    
+
+
+class KNNImputerDF(BaseEstimator, TransformerMixin):
+    def __init__(self, n_neighbors=5):
+        self.n_neighbors = n_neighbors
+        self.imputer = KNNImputer(n_neighbors = n_neighbors)
+        
+    def fit(self, X, y = None):
+        self.imputer.fit(X)
+        return self
+    
+    def transform(self, X):
+        temp = self.imputer.transform(X)
+        return pd.DataFrame(temp, columns = self.imputer.feature_names_in_)
+    
+    def fit_transform(self, X, y=None):
+        self.fit(X, y)
+        return self.transform(X)
+
